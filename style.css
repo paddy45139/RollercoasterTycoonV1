@@ -73,3 +73,10 @@ button.active { background: #fff1c9; border-color: #f4b942; }
   pointer-events: none;
 }
 #toast.show { opacity: .92; }
+@keyframes flashUp { 0% { color: #2f9a52; transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes flashDown { 0% { color: #c0392b; transform: scale(1.12); } 100% { transform: scale(1); } }
+#money { display: inline-block; transform-origin: left center; }
+#money.up { animation: flashUp .5s ease-out; }
+#money.down { animation: flashDown .5s ease-out; }
+.stat { transition: transform .15s; }
+.stat:hover { transform: translateY(-1px); }

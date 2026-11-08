@@ -37,6 +37,11 @@ class ParkScene extends Phaser.Scene {
     this.drawGrass();
     this.pathGfx = this.add.graphics().setDepth(1);
     this.preview = this.add.graphics().setDepth(5000);
+    this.previewText = this.add.text(0, 0, '', {
+      fontFamily: 'Trebuchet MS', fontSize: '12px', fontStyle: 'bold', color: '#ffffff', stroke: '#23324a', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setDepth(5001);
+    this.clouds = [0, 1, 2].map(i => this.add.graphics({ x: i * 240, y: 80 + i * 190 }).setDepth(4000)
+      .fillStyle(0x23324a, 0.05).fillEllipse(0, 0, 150, 60).fillEllipse(50, -15, 90, 50).fillEllipse(-45, 10, 80, 40));
     this.newGame();
 
     this.input.on('pointermove', p => {
@@ -143,6 +148,10 @@ class ParkScene extends Phaser.Scene {
     b.view = this.drawBuilding(b);
     this.buildings.push(b);
     if (animate) {
+      const puff = this.add.graphics({ x: x * T + t.w * T / 2, y: y * T + t.h * T / 2 }).setDepth(5500);
+      puff.fillStyle(0xffffff, 0.8);
+      for (let i = 0; i < 8; i++) puff.fillCircle(Math.cos(i * 0.785) * t.w * 12, Math.sin(i * 0.785) * t.h * 12, 6);
+      this.tweens.add({ targets: puff, scale: 1.6, alpha: 0, duration: 500, onComplete: () => puff.destroy() });
       b.view.setScale(0.3);
       this.tweens.add({ targets: b.view, scale: 1, duration: 350, ease: 'Back.easeOut' });
     }
@@ -245,6 +254,7 @@ class ParkScene extends Phaser.Scene {
       v.rideTimer -= dt;
       if (v.rideTimer <= 0) {
         v.view.setVisible(true);
+        v.target.riders--;
         v.visitsLeft--;
         v.last = v.target;
         this.chooseTarget(v);
@@ -260,6 +270,7 @@ class ParkScene extends Phaser.Scene {
         this.money += t.fee;
         this.floatText(v.target.x * T + v.target.w * T / 2, v.target.y * T + 6, '+' + fmt(t.fee), '#9dff8a');
         v.state = 'ride';
+        v.target.riders = (v.target.riders || 0) + 1;
         v.rideTimer = t.attraction ? 3 : 1.5;
         v.view.setVisible(false);
         this.updateUI();
@@ -351,6 +362,7 @@ class ParkScene extends Phaser.Scene {
       g.fillStyle(0x8a5a32).fillRect(4, 22, 24, 6);
       for (let i = 0; i < 4; i++) g.fillStyle(i % 2 ? 0xffffff : 0xe2456f).fillRect(2 + i * 7, 4, 7, 8);
       g.fillStyle(0xf4b942).fillCircle(16, 17, 4);
+      g.fillStyle(0xe2456f).fillCircle(15, 16, 1.2).fillCircle(17.5, 18, 1.2);
     } else if (b.type === 'carousel') {
       g.fillStyle(0xc9a26b).fillCircle(32, 36, 27);
       g.fillStyle(0xf7e3b5).fillCircle(32, 36, 24);
@@ -375,12 +387,14 @@ class ParkScene extends Phaser.Scene {
       wheel.lineStyle(3, 0xe2456f).strokeCircle(0, 0, 24);
       wheel.lineStyle(1.5, 0xfff3d6);
       for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; wheel.lineBetween(0, 0, Math.cos(a) * 24, Math.sin(a) * 24); }
-      const cols = [0xf4b942, 0x4aa3df, 0x8e5ad6, 0x4fc16b];
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        wheel.fillStyle(cols[i % 4]).fillRoundedRect(Math.cos(a) * 24 - 4, Math.sin(a) * 24 - 4, 8, 8, 2);
-      }
       c.add(wheel);
+      const cols = [0xf4b942, 0x4aa3df, 0x8e5ad6, 0x4fc16b];
+      b.gondolas = cols.concat(cols).map(col => {
+        const gd = this.add.graphics().fillStyle(0x6b7a8f).fillRect(-0.5, -4, 1, 3).fillStyle(col).fillRoundedRect(-4, -1, 8, 7, 2);
+        c.add(gd);
+        return gd;
+      });
+      b.gondolas.forEach((gd, i) => { const ang = (i / 8) * Math.PI * 2; gd.setPosition(32 + Math.cos(ang) * 24, 26 + Math.sin(ang) * 24); });
       c.add(this.add.graphics().fillStyle(0xf4b942).fillCircle(32, 26, 4));
       b.spin = wheel;
     } else if (b.type === 'coaster') {
@@ -395,6 +409,8 @@ class ParkScene extends Phaser.Scene {
       g.fillStyle(0x4fc16b).fillEllipse(cx, cy, rx * 1.3, ry * 1.1);
       g.fillStyle(0xfff3d6).fillRect(cx - 18, H - 22, 36, 16);
       g.fillStyle(0xe2456f).fillTriangle(cx - 22, H - 22, cx + 22, H - 22, cx, H - 34);
+      g.fillStyle(0x6b7a8f).fillRect(cx - 1, H - 46, 2, 14);
+      g.fillStyle(0xf4b942).fillTriangle(cx + 1, H - 46, cx + 12, H - 42, cx + 1, H - 38);
       const train = this.add.graphics();
       c.add(train);
       b.train = train; b.track = { cx, cy, rx, ry };
@@ -408,12 +424,20 @@ class ParkScene extends Phaser.Scene {
     this.simulate(dt);
     for (const b of this.buildings) {
       b.phase += dt;
-      if (b.type === 'carousel') b.spin.rotation += dt * 1.4;
-      if (b.type === 'ferris') b.spin.rotation += dt * 0.5;
+      const busy = Math.min(4, b.riders || 0);
+      if (b.type === 'carousel') b.spin.rotation += dt * (0.5 + busy * 0.5);
+      if (b.type === 'ferris') {
+        b.spin.rotation += dt * (0.2 + busy * 0.15);
+        b.gondolas.forEach((gd, i) => {
+          const a = b.spin.rotation + (i / 8) * Math.PI * 2;
+          gd.setPosition(32 + Math.cos(a) * 24, 26 + Math.sin(a) * 24);
+        });
+      }
       if (b.type === 'coaster') {
         const { cx, cy, rx, ry } = b.track;
         const g = b.train.clear();
-        const t0 = b.phase * 1.6;
+        b.trainPos = (b.trainPos || 0) + dt * (busy ? 1.8 + busy * 0.3 : 0.4);
+        const t0 = b.trainPos;
         const cols = [0xe2456f, 0xf4b942, 0x8e5ad6, 0xe2456f];
         for (let i = 0; i < 4; i++) {
           const a = t0 - i * 0.28;
@@ -422,24 +446,42 @@ class ParkScene extends Phaser.Scene {
         }
       }
     }
+    for (const cl of this.clouds) { cl.x += dt * 8; if (cl.x > N * T + 120) cl.x = -120; }
     this.drawPreview();
   }
 
   drawPreview() {
     const g = this.preview.clear();
     const h = this.hover;
+    this.previewText.setVisible(!!h);
+    if (this.ghost) this.ghost.setVisible(!!h);
     if (!h) return;
     if (this.tool === 'bulldoze') {
-      g.lineStyle(2, 0xff4d4d).fillStyle(0xff4d4d, 0.3).fillRect(h.x * T, h.y * T, T, T).strokeRect(h.x * T, h.y * T, T, T);
+      const c = this.grid[h.y][h.x];
+      const b = typeof c === 'number' && this.buildings.find(o => o.id === c);
+      const r = b ? [b.x, b.y, b.w, b.h] : [h.x, h.y, 1, 1];
+      const ok = c !== null && c !== 'gate' && !(h.x === ENTRANCE.x && h.y === ENTRANCE.y);
+      g.lineStyle(2, 0xff4d4d).fillStyle(0xff4d4d, ok ? 0.35 : 0.15).fillRect(r[0] * T, r[1] * T, r[2] * T, r[3] * T).strokeRect(r[0] * T, r[1] * T, r[2] * T, r[3] * T);
+      this.previewText.setText(ok ? '+' + fmt(TYPES[b ? b.type : 'path'].cost / 2) : '').setPosition(r[0] * T + r[2] * T / 2, r[1] * T - 2);
       return;
     }
     const t = TYPES[this.tool];
     const ok = this.canPlace(this.tool, h.x, h.y) && this.money >= t.cost;
     const col = ok ? 0x3ddc63 : 0xff4d4d;
-    g.fillStyle(col, 0.35).lineStyle(2, col).fillRect(h.x * T, h.y * T, t.w * T, t.h * T).strokeRect(h.x * T, h.y * T, t.w * T, t.h * T);
+    g.fillStyle(col, 0.3).lineStyle(2, col).fillRect(h.x * T, h.y * T, t.w * T, t.h * T).strokeRect(h.x * T, h.y * T, t.w * T, t.h * T);
+    if (this.ghost) this.ghost.setPosition(h.x * T, h.y * T).setAlpha(ok ? 0.65 : 0.35);
+    this.previewText.setText(fmt(t.cost)).setColor(this.money >= t.cost ? '#ffffff' : '#ff8080')
+      .setPosition(h.x * T + t.w * T / 2, h.y * T - 2);
   }
 
   updateUI() {
+    const m = $('money');
+    if (this.lastMoney !== undefined && this.lastMoney !== this.money) {
+      m.classList.remove('up', 'down');
+      void m.offsetWidth;
+      m.classList.add(this.money > this.lastMoney ? 'up' : 'down');
+    }
+    this.lastMoney = this.money;
     $('money').textContent = fmt(this.money);
     $('money').style.color = this.money < 0 ? '#c0392b' : '';
     $('day').textContent = this.day;
@@ -449,6 +491,12 @@ class ParkScene extends Phaser.Scene {
 
   setTool(tool) {
     this.tool = tool;
+    if (this.ghost) this.ghost.destroy();
+    this.ghost = null;
+    if (TYPES[tool] && tool !== 'path') {
+      const t = TYPES[tool];
+      this.ghost = this.drawBuilding({ type: tool, x: 0, y: 0, w: t.w, h: t.h }).setDepth(4999).setVisible(false);
+    }
     document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
   }
 }
@@ -460,6 +508,9 @@ function buildMenu(scene) {
     btn.className = 'tool ' + cls;
     btn.dataset.tool = tool;
     btn.innerHTML = `<span>${label}</span><small>${price}</small>`;
+    const t = TYPES[tool];
+    if (t) btn.title = `${t.name}: ${t.w}×${t.h} tiles` + (t.fee ? `, earns ${fmt(t.fee)}/visit, upkeep ${fmt(t.upkeep)}/day` : '');
+    else btn.title = 'Remove paths and buildings (50% refund)';
     btn.onclick = () => scene.setTool(tool);
     menu.appendChild(btn);
   };
