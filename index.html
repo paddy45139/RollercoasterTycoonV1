@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tiny Park Tycoon</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="logo">🎡 Tiny Park Tycoon</div>
+    <div class="stat"><span>Money</span><b id="money">$5,000</b></div>
+    <div class="stat"><span>Visitors</span><b id="visitors">0</b></div>
+    <div class="stat"><span>Rating</span><b id="rating">0%</b></div>
+    <div class="stat"><span>Day</span><b id="day">1</b></div>
+    <div class="controls" id="controls"></div>
+  </header>
+  <main>
+    <aside id="menu"></aside>
+    <div id="game"></div>
+  </main>
+  <div id="toast"></div>
+  <script src="lib/phaser.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

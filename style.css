@@ -1,0 +1,75 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  background: linear-gradient(#7cc7ef, #a9dcf5);
+  color: #23324a;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  background: #fffdf6;
+  border-bottom: 4px solid #f4b942;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.logo { font-weight: bold; font-size: 20px; color: #e2456f; margin-right: 10px; }
+.stat {
+  background: #eef6ff;
+  border-radius: 10px;
+  padding: 4px 12px;
+  display: flex;
+  flex-direction: column;
+  min-width: 84px;
+}
+.stat span { font-size: 11px; text-transform: uppercase; color: #6a7a92; }
+.stat b { font-size: 17px; }
+.controls { margin-left: auto; display: flex; gap: 6px; }
+main { flex: 1; display: flex; min-height: 0; }
+#menu {
+  width: 170px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(255,253,246,.85);
+  overflow-y: auto;
+}
+#menu h3 { font-size: 12px; text-transform: uppercase; color: #6a7a92; margin: 6px 0 2px; }
+button {
+  font-family: inherit;
+  border: 2px solid #d9e2ee;
+  background: #fff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #23324a;
+  transition: transform .08s, border-color .15s, background .15s;
+}
+button:hover { border-color: #f4b942; transform: translateY(-1px); }
+button.active { background: #fff1c9; border-color: #f4b942; }
+.tool { display: flex; justify-content: space-between; align-items: center; text-align: left; }
+.tool small { color: #2f9a52; font-weight: bold; }
+.tool.bulldoze small { color: #c0392b; }
+#game { flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; }
+#game canvas { border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+#toast {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #23324a;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 20px;
+  opacity: 0;
+  transition: opacity .3s;
+  pointer-events: none;
+}
+#toast.show { opacity: .92; }
