@@ -4,6 +4,10 @@ const T = 32;
 const N = 20;
 const START_MONEY = 5000;
 const ENTRANCE = { x: 10, y: 19 };
+const DAY_SECONDS = 20;
+const MAX_VISITORS = 20;
+const WALK_SPEED = 42;
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 const TYPES = {
   path:     { name: 'Path',           cost: 10,   w: 1, h: 1 },
@@ -70,6 +74,12 @@ class ParkScene extends Phaser.Scene {
     this.nextId = 1;
     this.money = START_MONEY;
     this.day = 1;
+    this.dayTimer = 0;
+    this.spawnTimer = 0;
+    this.totalVisitors = 0;
+    this.speed = 1;
+    if (this.visitors) this.visitors.forEach(v => v.view.destroy());
+    this.visitors = [];
 
     this.grid[ENTRANCE.y][ENTRANCE.x - 1] = 'gate';
     this.grid[ENTRANCE.y][ENTRANCE.x + 1] = 'gate';
@@ -77,14 +87,13 @@ class ParkScene extends Phaser.Scene {
     this.gate = this.drawGate();
 
     if (data) {
-      this.money = data.money; this.day = data.day;
+      this.money = data.money; this.day = data.day; this.totalVisitors = data.totalVisitors || 0;
       data.paths.forEach(([x, y]) => { this.grid[y][x] = 'path'; });
       data.buildings.forEach(([type, x, y]) => this.addBuilding(type, x, y));
     } else {
       for (let y = 15; y < 19; y++) this.grid[y][ENTRANCE.x] = 'path';
     }
-    this.redrawPaths();
-    this.updateUI();
+    this.gridChanged();
   }
 
   canPlace(type, x, y) {
@@ -102,8 +111,9 @@ class ParkScene extends Phaser.Scene {
     if (!this.canPlace(this.tool, h.x, h.y)) return;
     if (this.money < t.cost) { toast('Not enough money!'); return; }
     this.money -= t.cost;
-    if (this.tool === 'path') { this.grid[h.y][h.x] = 'path'; this.redrawPaths(); }
+    if (this.tool === 'path') this.grid[h.y][h.x] = 'path';
     else this.addBuilding(this.tool, h.x, h.y, true);
+    this.gridChanged();
     this.floatText(h.x * T + t.w * T / 2, h.y * T, '-' + fmt(t.cost), '#ffdd57');
     this.updateUI();
   }
@@ -112,7 +122,7 @@ class ParkScene extends Phaser.Scene {
     const c = this.grid[y][x];
     if (c === null || c === 'gate' || (x === ENTRANCE.x && y === ENTRANCE.y)) return;
     let refund;
-    if (c === 'path') { this.grid[y][x] = null; refund = TYPES.path.cost / 2; this.redrawPaths(); }
+    if (c === 'path') { this.grid[y][x] = null; refund = TYPES.path.cost / 2; }
     else {
       const b = this.buildings.find(b => b.id === c);
       for (let j = 0; j < b.h; j++) for (let i = 0; i < b.w; i++) this.grid[b.y + j][b.x + i] = null;
@@ -121,6 +131,7 @@ class ParkScene extends Phaser.Scene {
       refund = TYPES[b.type].cost / 2;
     }
     this.money += refund;
+    this.gridChanged();
     this.floatText(x * T + T / 2, y * T, '+' + fmt(refund), '#9dff8a');
     this.updateUI();
   }
@@ -145,10 +156,154 @@ class ParkScene extends Phaser.Scene {
     this.tweens.add({ targets: txt, y: y - 30, alpha: 0, duration: 900, onComplete: () => txt.destroy() });
   }
 
+  // ---------- simulation ----------
+  isPath(x, y) { return x >= 0 && y >= 0 && x < N && y < N && this.grid[y][x] === 'path'; }
+
+  gridChanged() {
+    this.redrawPaths();
+    const seen = new Set([ENTRANCE.x + ',' + ENTRANCE.y]);
+    const queue = [ENTRANCE];
+    while (queue.length) {
+      const c = queue.shift();
+      for (const [dx, dy] of DIRS) {
+        const nx = c.x + dx, ny = c.y + dy, k = nx + ',' + ny;
+        if (!seen.has(k) && this.isPath(nx, ny)) { seen.add(k); queue.push({ x: nx, y: ny }); }
+      }
+    }
+    for (const b of this.buildings) {
+      b.access = [];
+      for (let j = -1; j <= b.h; j++) for (let i = -1; i <= b.w; i++) {
+        const edge = (i === -1 || i === b.w) !== (j === -1 || j === b.h);
+        const x = b.x + i, y = b.y + j;
+        if (edge && seen.has(x + ',' + y)) b.access.push({ x, y });
+      }
+    }
+    const open = this.buildings.filter(b => b.access.length);
+    const attractions = open.filter(b => TYPES[b.type].attraction).length;
+    const food = open.filter(b => b.type === 'food').length;
+    const trees = this.buildings.filter(b => b.type === 'tree').length;
+    const variety = new Set(open.filter(b => TYPES[b.type].attraction).map(b => b.type)).size;
+    this.rating = Math.min(100, Math.min(45, attractions * 12) + variety * 5 + Math.min(20, food * 10) + Math.min(20, trees * 2));
+    this.updateUI();
+  }
+
+  findPath(from, goals) {
+    const key = p => p.x + ',' + p.y;
+    const goalSet = new Set(goals.map(key));
+    const prev = new Map([[key(from), null]]);
+    const queue = [from];
+    while (queue.length) {
+      const c = queue.shift();
+      if (goalSet.has(key(c))) {
+        const path = [];
+        for (let p = c; p; p = prev.get(key(p))) path.unshift(p);
+        return path;
+      }
+      for (const [dx, dy] of DIRS) {
+        const n = { x: c.x + dx, y: c.y + dy };
+        if (!prev.has(key(n)) && this.isPath(n.x, n.y)) { prev.set(key(n), c); queue.push(n); }
+      }
+    }
+    return null;
+  }
+
+  spawnVisitor() {
+    const v = {
+      tile: { ...ENTRANCE }, px: ENTRANCE.x * T + T / 2, py: ENTRANCE.y * T + T - 2,
+      ox: Math.random() * 12 - 6, oy: Math.random() * 10 - 5,
+      visitsLeft: 2 + Math.floor(Math.random() * 3), state: 'walk', path: [], phase: Math.random() * 6,
+    };
+    const g = this.add.graphics();
+    const shirt = Phaser.Utils.Array.GetRandom([0xe2456f, 0x4aa3df, 0xf4b942, 0x8e5ad6, 0x4fc16b, 0xff8c42]);
+    const skin = Phaser.Utils.Array.GetRandom([0xffd9b3, 0xe8b48a, 0xb5794d, 0x8a5a32]);
+    g.fillStyle(0x000000, 0.2).fillEllipse(0, 1, 9, 4);
+    g.fillStyle(0x3a4a66).fillRect(-3, -4, 2, 5).fillRect(1, -4, 2, 5);
+    const body = this.add.graphics();
+    body.fillStyle(shirt).fillRoundedRect(-4, -11, 8, 8, 2);
+    body.fillStyle(skin).fillCircle(0, -14, 3.5);
+    v.legs = g; v.body = body;
+    v.view = this.add.container(v.px, v.py, [g, body]);
+    this.visitors.push(v);
+    this.totalVisitors++;
+    this.chooseTarget(v);
+  }
+
+  chooseTarget(v) {
+    const open = this.buildings.filter(b => b.access && b.access.length && TYPES[b.type].fee && b !== v.last);
+    if (v.visitsLeft > 0 && open.length) {
+      const b = Phaser.Utils.Array.GetRandom(open);
+      const path = this.findPath(v.tile, b.access);
+      if (path) { v.target = b; v.path = path.slice(1); v.state = 'walk'; return; }
+    }
+    v.target = null;
+    v.state = 'leave';
+    v.path = (this.findPath(v.tile, [ENTRANCE]) || []).slice(1);
+  }
+
+  updateVisitor(v, dt) {
+    if (v.state === 'ride') {
+      v.rideTimer -= dt;
+      if (v.rideTimer <= 0) {
+        v.view.setVisible(true);
+        v.visitsLeft--;
+        v.last = v.target;
+        this.chooseTarget(v);
+      }
+      return;
+    }
+    if (v.target && !this.buildings.includes(v.target)) this.chooseTarget(v);
+    const next = v.path[0];
+    if (!next) {
+      if (v.state === 'leave') { v.done = true; return; }
+      if (v.target && v.target.access.some(a => a.x === v.tile.x && a.y === v.tile.y)) {
+        const t = TYPES[v.target.type];
+        this.money += t.fee;
+        this.floatText(v.target.x * T + v.target.w * T / 2, v.target.y * T + 6, '+' + fmt(t.fee), '#9dff8a');
+        v.state = 'ride';
+        v.rideTimer = t.attraction ? 3 : 1.5;
+        v.view.setVisible(false);
+        this.updateUI();
+      } else this.chooseTarget(v);
+      return;
+    }
+    if (!this.isPath(next.x, next.y)) { this.chooseTarget(v); if (v.state === 'leave' && !v.path.length && !(v.tile.x === ENTRANCE.x && v.tile.y === ENTRANCE.y)) v.done = true; return; }
+    const tx = next.x * T + T / 2 + v.ox, ty = next.y * T + T / 2 + 4 + v.oy;
+    const dx = tx - v.px, dy = ty - v.py, d = Math.hypot(dx, dy), step = WALK_SPEED * dt;
+    if (d <= step) { v.px = tx; v.py = ty; v.tile = next; v.path.shift(); }
+    else { v.px += dx / d * step; v.py += dy / d * step; }
+    v.phase += dt * 12;
+    v.body.y = -Math.abs(Math.sin(v.phase)) * 1.5;
+    v.legs.scaleX = 1 + Math.sin(v.phase) * 0.15;
+    v.view.setPosition(v.px, v.py).setDepth(Math.floor(v.py / T) * 10 + 5);
+  }
+
+  simulate(dt) {
+    this.dayTimer += dt;
+    if (this.dayTimer >= DAY_SECONDS) {
+      this.dayTimer -= DAY_SECONDS;
+      this.day++;
+      const upkeep = this.buildings.reduce((s, b) => s + (TYPES[b.type].upkeep || 0), 0);
+      if (upkeep) { this.money -= upkeep; toast(`Day ${this.day}: operating costs ${fmt(upkeep)}`); }
+      this.updateUI();
+    }
+    const canVisit = this.buildings.some(b => b.access && b.access.length && TYPES[b.type].fee);
+    this.spawnTimer -= dt;
+    if (canVisit && this.spawnTimer <= 0 && this.visitors.length < MAX_VISITORS) {
+      this.spawnVisitor();
+      this.spawnTimer = 9 - this.rating * 0.07;
+      this.updateUI();
+    }
+    for (const v of this.visitors) this.updateVisitor(v, dt);
+    if (this.visitors.some(v => v.done)) {
+      this.visitors = this.visitors.filter(v => { if (v.done) v.view.destroy(); return !v.done; });
+      this.updateUI();
+    }
+  }
+
   // ---------- drawing ----------
   redrawPaths() {
     const g = this.pathGfx.clear();
-    const isP = (x, y) => x >= 0 && y >= 0 && x < N && y < N && this.grid[y][x] === 'path';
+    const isP = (x, y) => this.isPath(x, y);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       if (!isP(x, y)) continue;
       const px = x * T, py = y * T, m = 3;
@@ -249,7 +404,8 @@ class ParkScene extends Phaser.Scene {
 
   // ---------- loop ----------
   update(time, delta) {
-    const dt = delta / 1000;
+    const dt = Math.min(delta, 100) / 1000 * this.speed;
+    this.simulate(dt);
     for (const b of this.buildings) {
       b.phase += dt;
       if (b.type === 'carousel') b.spin.rotation += dt * 1.4;
@@ -287,6 +443,8 @@ class ParkScene extends Phaser.Scene {
     $('money').textContent = fmt(this.money);
     $('money').style.color = this.money < 0 ? '#c0392b' : '';
     $('day').textContent = this.day;
+    $('visitors').textContent = `${this.visitors.length} (${this.totalVisitors} total)`;
+    $('rating').textContent = this.rating + '%';
   }
 
   setTool(tool) {
